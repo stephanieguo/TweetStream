@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+    <head>
+    <title>Tweetstream</title>
+    <link href="d3.css" rel="stylesheet" type="text/css">
+    <link href="http://fonts.googleapis.com/css?family=Bitter" rel='stylesheet' type='text/css'>
+    
+        <style>
+            #test1 {
+                margin: 0;
+                padding: 0;
+                overflow: none;
+            }
+            </style>
+        </head>
+        
+        <body>
+            <div id="test1">
+                <div id="main" role="main">
+                    <h1>Tweet Stream</h1>
+                    <form action="" id="formid" method="GET">
+                        <input type="text" name="search2" id="search2" value="" />
+                        <input type="submit" name="submit" id="btn-search" value="Search" />
+                    </form>
+                    <div id="container" style="display:none">
+                        <br />
+                        Please wait while the page loads...<br /> <br />
+                    </div>
+                <svg></svg>
+            </div>
+            
+            <script src="d3.v2.js"></script>
+            <script src="jquery.min.js"></script>
+            <script src="nvtooltip.js"></script>
+            <script src="d3legend.js"></script>
+            <script src="d3line.js"></script>
+            <script src="d3linewithlegend.js"></script>
+            
+            <script>
+                
+                function log(text) {
+                    if (console && console.log) console.log(text);
+                    return text;
+                }
+                
+                $(document).ready(function() {
+                    var defaultText = "Search...";
+                                  var searchBox = $('#search2');
+                                  
+                    //set default text on load
+                    searchBox.val(defaultText);
+                                  
+                    //on focus behaviour
+                    searchBox.focus(function(){
+                        if ($(this).val() == defaultText) {//clear text field
+                            $(this).val('');
+                        }
+                    });
+                                  
+                    //on blur behaviour <img src='ajax-loader.gif' border='0'>
+                    searchBox.blur(function(){
+                        if ($(this).val() == "") {//restore default text
+                            $(this).val(defaultText);
+                        }
+                    });
+                                  
+                    var timeElapsed = 0;
+                    var sin = [];
+                    sin.push([0,"",0,0,0]);
+                    var timesClicked = 0;
+                         
+                    var loop = 0;
+                    $('#formid').submit(function() {
+                        event.preventDefault();
+                        document.getElementById("container").style.display = "block";
+                                        
+                        if (loop !=0) clearInterval(loop);
+                        if (timesClicked > 0) {
+                            timeElapsed = 0;
+                            sin = [];
+                            sin.push([0,"", 0, 0,0]);
+                            d3.select('#test1 svg')
+                            .remove();
+                            $('#test1').append('<svg></svg>');
+                        }
+                        var term = searchBox.val();
+                        var url = 'http://safe-coast-8169.herokuapp.com/search.json/' + encodeURIComponent(term);
+                        loop = setInterval(function() {
+                          d3.json(url, function(data) {
+                            console.log(data);
+                            if (data.length != 0) {
+                                var index = Math.floor(Math.random()*data.length)
+                                drawChart(data.length, term, data[index].user, data[index].text, data[index].pic);
+                            }
+                            else {
+                                drawChart(0,term,0,0,0);
+                            }
+                                  
+                          });
+                        }, 5000);
+                        timesClicked += 1;
+                    });
+                    function drawChart(datalength, searchterm, user, tweettext, pic) {
+                        document.getElementById("container").style.display = "none";
+                        if (timesClicked == 0)
+                            timeElapsed = 0;
+                        else
+                            timeElapsed += 5;
+                        sin.push([timeElapsed, datalength, user, tweettext, pic]);
+                        
+                        var dataset = [{
+                            data: sin,
+                            label: searchterm
+                        }];
+                                
+                            var margin = {top: 30, right: 10, bottom: 50, left: 60},
+                            chart = d3LineWithLegend()
+                            .xAxis.label('Time since you connected (s)')
+                            .width(width(margin))
+                            .height(height(margin))
+                            .yAxis.label('Number of Tweets containing "' + searchterm + '"');
+                                  
+                            var svg = d3.select('#test1 svg');
+                                  svg.datum(dataset);
+                                  
+                            svg.transition().duration(500)
+                            .attr('width', width(margin))
+                            .attr('height', height(margin))
+                            .call(chart);
+                                  
+                            chart.dispatch.on('showTooltip', function(e) {
+                                var offset = $('#test1').offset(), // { left: 0, top: 0 }
+                                left = e.pos[0] + offset.left,
+                                top = e.pos[1] + offset.top,
+                                formatter = d3.format(".04f");
+                               
+                                var content = 0;
+                                if (e.point[1] > 0)
+                                    content = '<div class="box">'+ '<img src="'+e.point[4]+'" style="position: relative; padding:5px; float: left">'+
+                                               '@'+e.point[2]+': ' + ' '+ e.point[3] +
+                                              '</div>';
+                                else
+                                    content = 'No Tweets';
+                                              
+                                nvtooltip.show([left, top], content);
+                            });
+                                  
+                            chart.dispatch.on('hideTooltip', function(e) {
+                                nvtooltip.cleanup();
+                            });
+                                  
+                            chart.redraw = function() {
+                                // update the x and y scales with the new data
+                                chart.x = d3.scale.linear()
+                                .domain([0, chart(svg).data.length])
+                                .range([0,chart.width]);
+                                  
+                                chart.y = d3.scale.linear()
+                                .domain([d3.max(svg.datum), d3.min(svg.datum)])
+                                .range([0,chart.height]);
+                                  
+                                // rather than add a new line, we can just use transitions
+                                // and update the 'd' attribute of the SVG path used to
+                                // originally generate the line
+                                chart.line
+                                .transition()
+                                .duration(100)
+                                .attr('d', chart.lineGen(chart.data));
+                            };
+                                  
+                            $(window).resize(function() {
+                                var margin = chart.margin();
+                                                   
+                                chart
+                                .width(width(margin))
+                                .height(height(margin));
+                                             
+                                d3.select('#test1 svg')
+                                .attr('width', width(margin))
+                                .attr('height', height(margin))
+                                .call(chart);
+                            });
+                                  
+                                  
+                            function width(margin) {
+                                var w = $(window).width() - 20;
+                                  
+                                return ( (w - margin.left - margin.right - 20) < 0 ) ? margin.left + margin.right + 2 : w;
+                            }
+                                  
+                            function height(margin) {
+                                var h = $(window).height() - 20 - 50;
+                                  
+                                return ( h - margin.top - margin.bottom - 20 < 0 ) ? margin.top + margin.bottom + 2 : h;
+                            }
+                        }
+                                  
+                    });
+                
+                
+                </script>
